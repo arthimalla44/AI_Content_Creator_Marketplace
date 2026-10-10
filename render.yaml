@@ -1,0 +1,32 @@
+services:
+  # 1. Full-Stack Next.js Web Application (Marketplace, Auth, Studio, Database)
+  - type: web
+    name: creatorhub-ai-frontend
+    env: node
+    plan: free
+    rootDir: frontend
+    buildCommand: npm install && npx prisma generate && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: DIRECT_URL
+        sync: false
+      - key: NEXTAUTH_SECRET
+        generateValue: true
+      - key: AI_PROVIDER
+        value: mock
+
+  # 2. Python Recommendation & ML API Service
+  - type: web
+    name: creatorhub-ai-ml-service
+    env: python
+    plan: free
+    rootDir: .
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9

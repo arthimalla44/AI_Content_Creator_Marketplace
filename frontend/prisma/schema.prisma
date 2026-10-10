@@ -1,0 +1,416 @@
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  CLIENT
+  CREATOR
+  ADMIN
+}
+
+enum ProjectStatus {
+  PENDING
+  ACCEPTED
+  IN_PROGRESS
+  REVIEW
+  REVISION_REQUESTED
+  COMPLETED
+  CANCELLED
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  CANCELLED
+  REFUNDED
+}
+
+enum JobStatus {
+  OPEN
+  IN_PROGRESS
+  CLOSED
+}
+
+enum ApplicationStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+enum ReportStatus {
+  PENDING
+  REVIEWED
+  RESOLVED
+  DISMISSED
+}
+
+enum DisputeStatus {
+  OPEN
+  UNDER_REVIEW
+  RESOLVED
+  DISMISSED
+}
+
+enum ChallengeStatus {
+  ACTIVE
+  VOTING
+  ENDED
+}
+
+model User {
+  id            String          @id @default(cuid())
+  name          String
+  email         String          @unique
+  passwordHash  String
+  role          Role            @default(CLIENT)
+  avatar        String?
+  bio           String?
+  location      String?
+  website       String?
+  skills        String[]        @default([])
+  languages     String[]        @default([])
+  hourlyRate    Float?
+  availability  String?         @default("Available")
+  verified      Boolean         @default(false)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  creatorProfile CreatorProfile?
+  clientProjects Project[]       @relation("ClientProjects")
+  creatorProjects Project[]      @relation("CreatorProjects")
+  sentMessages   Message[]       @relation("SentMessages")
+  clientConvs    Conversation[]  @relation("ClientConversations")
+  creatorConvs   Conversation[]  @relation("CreatorConversations")
+  givenReviews   Review[]        @relation("GivenReviews")
+  favorites      Favorite[]
+  notifications  Notification[]
+  aiRequests     AIRequest[]
+  savedAIContents SavedAIContent[]
+  jobPosts       JobPost[]
+  reports        Report[]        @relation("UserReports")
+  collaborations Collaboration[] @relation("UserCollaborations")
+  submissions    ChallengeSubmission[]
+  disputes       Dispute[]       @relation("UserDisputes")
+}
+
+model CreatorProfile {
+  id             String          @id @default(cuid())
+  userId         String          @unique
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  headline       String
+  description    String
+  category       String
+  experience     String          @default("Intermediate")
+  responseTime   String          @default("< 2 hours")
+  completionRate Float           @default(99.0)
+  rating         Float           @default(5.0)
+  reviewCount    Int             @default(0)
+  totalProjects  Int             @default(0)
+  totalEarnings  Float           @default(0.0)
+  aiSpecialties  String[]        @default([])
+  tools          String[]        @default([])
+  portfolioUrl   String?
+  socialLinks    Json?
+  
+  portfolioItems PortfolioItem[]
+  services       Service[]
+  reviews        Review[]
+  applications   Application[]
+  favorites      Favorite[]
+  workflows      Workflow[]
+}
+
+model PortfolioItem {
+  id          String         @id @default(cuid())
+  creatorId   String
+  creator     CreatorProfile @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  title       String
+  description String
+  category    String
+  imageUrl    String
+  videoUrl    String?
+  tags        String[]       @default([])
+  toolsUsed   String[]       @default([])
+  aiGenerated Boolean        @default(true)
+  createdAt   DateTime       @default(now())
+}
+
+model Service {
+  id            String         @id @default(cuid())
+  creatorId     String
+  creator       CreatorProfile @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  title         String
+  description   String
+  category      String
+  thumbnail     String
+  videoUrl      String?
+  deliveryDays  Int            @default(3)
+  basicPrice    Float
+  standardPrice Float
+  premiumPrice  Float
+  revisions     Int            @default(2)
+  features      String[]       @default([])
+  tags          String[]       @default([])
+  status        String         @default("ACTIVE")
+  createdAt     DateTime       @default(now())
+
+  projects      Project[]
+}
+
+model Project {
+  id           String        @id @default(cuid())
+  clientId     String
+  client       User          @relation("ClientProjects", fields: [clientId], references: [id])
+  creatorId    String
+  creator      User          @relation("CreatorProjects", fields: [creatorId], references: [id])
+  serviceId    String?
+  service      Service?      @relation(fields: [serviceId], references: [id])
+  title        String
+  description  String
+  requirements String?
+  budget       Float
+  status       ProjectStatus @default(PENDING)
+  deadline     DateTime?
+  progress     Int           @default(10)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  order        Order?
+  reviews      Review[]
+  conversations Conversation[]
+  milestones   ProjectMilestone[]
+  disputes     Dispute[]
+}
+
+model ProjectMilestone {
+  id          String    @id @default(cuid())
+  projectId   String
+  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title       String
+  amount      Float
+  status      String    @default("PENDING") // PENDING, FUNDED, COMPLETED, RELEASED
+  dueDate     DateTime?
+  createdAt   DateTime  @default(now())
+}
+
+model Order {
+  id                   String      @id @default(cuid())
+  projectId            String      @unique
+  project              Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  amount               Float
+  status               OrderStatus @default(PENDING)
+  paymentStatus        String      @default("SIMULATED_ESCROW")
+  transactionReference String?
+  createdAt            DateTime    @default(now())
+}
+
+model Conversation {
+  id          String    @id @default(cuid())
+  clientId    String
+  client      User      @relation("ClientConversations", fields: [clientId], references: [id])
+  creatorId   String
+  creator     User      @relation("CreatorConversations", fields: [creatorId], references: [id])
+  projectId   String?
+  project     Project?  @relation(fields: [projectId], references: [id])
+  lastMessage String?
+  updatedAt   DateTime  @updatedAt
+
+  messages    Message[]
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderId       String
+  sender         User         @relation("SentMessages", fields: [senderId], references: [id])
+  content        String
+  attachment     String?
+  read           Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+}
+
+model Review {
+  id          String         @id @default(cuid())
+  projectId   String
+  project     Project        @relation(fields: [projectId], references: [id])
+  reviewerId  String
+  reviewer    User           @relation("GivenReviews", fields: [reviewerId], references: [id])
+  creatorId   String
+  creator     CreatorProfile @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  rating      Float
+  categories  Json?          // { quality: 5, communication: 5, timeliness: 5, creativity: 5 }
+  comment     String
+  createdAt   DateTime       @default(now())
+}
+
+model Favorite {
+  id        String         @id @default(cuid())
+  userId    String
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  creatorId String
+  creator   CreatorProfile @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, creatorId])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String
+  type      String
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model AIRequest {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String
+  prompt    String
+  result    String
+  createdAt DateTime @default(now())
+}
+
+model SavedAIContent {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  toolType  String
+  topic     String
+  output    String
+  metadata  Json?
+  createdAt DateTime @default(now())
+}
+
+model JobPost {
+  id             String        @id @default(cuid())
+  clientId       String
+  client         User          @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  title          String
+  description    String
+  budget         Float
+  category       String
+  skills         String[]      @default([])
+  preferredTools String[]      @default([])
+  deadline       DateTime?
+  status         JobStatus     @default(OPEN)
+  createdAt      DateTime      @default(now())
+
+  applications   Application[]
+}
+
+model Application {
+  id           String            @id @default(cuid())
+  jobId        String
+  job          JobPost           @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  creatorId    String
+  creator      CreatorProfile    @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  proposal     String
+  price        Float
+  deliveryDays Int               @default(3)
+  status       ApplicationStatus @default(PENDING)
+  createdAt    DateTime          @default(now())
+}
+
+model Workflow {
+  id             String         @id @default(cuid())
+  creatorId      String
+  creator        CreatorProfile @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  title          String
+  description    String
+  category       String
+  price          Float
+  tools          String[]       @default([])
+  inputs         String[]       @default([])
+  outputs        String[]       @default([])
+  license        String         @default("Commercial Unlimited")
+  purchasesCount Int            @default(0)
+  rating         Float          @default(5.0)
+  createdAt      DateTime       @default(now())
+}
+
+model PromptListing {
+  id            String   @id @default(cuid())
+  title         String
+  description   String
+  category      String
+  model         String
+  price         Float
+  exampleOutput String
+  creatorName   String
+  creatorAvatar String
+  license       String   @default("Commercial Non-Exclusive")
+  tags          String[] @default([])
+  createdAt     DateTime @default(now())
+}
+
+model Collaboration {
+  id             String   @id @default(cuid())
+  title          String
+  description    String
+  organizerId    String
+  organizer      User     @relation("UserCollaborations", fields: [organizerId], references: [id], onDelete: Cascade)
+  rolesNeeded    String[] @default([])
+  participants   String[] @default([])
+  status         String   @default("OPEN")
+  createdAt      DateTime @default(now())
+}
+
+model Challenge {
+  id           String                @id @default(cuid())
+  title        String
+  description  String
+  prizePool    Float
+  deadline     DateTime
+  category     String
+  status       ChallengeStatus       @default(ACTIVE)
+  rules        String[]              @default([])
+  submissions  ChallengeSubmission[]
+  createdAt    DateTime              @default(now())
+}
+
+model ChallengeSubmission {
+  id          String    @id @default(cuid())
+  challengeId String
+  challenge   Challenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+  creatorId   String
+  creator     User      @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  title       String
+  mediaUrl    String
+  votesCount  Int       @default(0)
+  createdAt   DateTime  @default(now())
+}
+
+model Dispute {
+  id          String        @id @default(cuid())
+  projectId   String
+  project     Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User          @relation("UserDisputes", fields: [userId], references: [id])
+  reason      String
+  details     String
+  status      DisputeStatus @default(OPEN)
+  resolution  String?
+  createdAt   DateTime      @default(now())
+}
+
+model Report {
+  id          String       @id @default(cuid())
+  reporterId  String
+  reporter    User         @relation("UserReports", fields: [reporterId], references: [id])
+  targetId    String
+  type        String
+  reason      String
+  status      ReportStatus @default(PENDING)
+  createdAt   DateTime     @default(now())
+}
